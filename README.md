@@ -196,10 +196,4 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 - [OpenAI](https://openai.com/) for AI text enhancement
 - [JavaFX](https://openjfx.io/) for the modern UI framework
 
-## 📞 Support
-
-For support, please open an issue on GitHub or contact the maintainers.
-
----
-
 **Note**: This application is designed for educational and professional use. Always ensure you have proper authorization before performing security testing on any systems.
