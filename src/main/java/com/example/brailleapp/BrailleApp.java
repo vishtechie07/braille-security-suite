@@ -1,10 +1,13 @@
 package com.example.brailleapp;
 
 import javafx.application.Application;
+import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
 import javafx.scene.control.*;
+import javafx.scene.input.Clipboard;
+import javafx.scene.input.ClipboardContent;
 import javafx.scene.layout.*;
 import javafx.scene.text.Font;
 import javafx.stage.FileChooser;
@@ -13,6 +16,11 @@ import javafx.scene.control.Alert.AlertType;
 import javafx.scene.control.Tooltip;
 
 import java.io.File;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.concurrent.Callable;
+import java.util.function.Consumer;
 import com.example.brailleapp.services.BrailleConverter;
 import com.example.brailleapp.services.OCRService;
 import com.example.brailleapp.services.DocumentParser;
@@ -34,6 +42,8 @@ public class BrailleApp extends Application {
     private TextArea inputTextArea;
     private TextArea brailleOutputArea;
     private TextField openaiKeyField;
+    private Label statusLabel;
+    private ProgressBar progressBar;
     private BrailleConverter brailleConverter;
     private OCRService ocrService;
     private DocumentParser documentParser;
@@ -41,6 +51,15 @@ public class BrailleApp extends Application {
     private SecurityScanner securityScanner;
     private PenetrationTester penetrationTester;
     private SecurityAuditLogger securityLogger;
+
+    // Action buttons (used for busy-state disabling)
+    private Button convertButton;
+    private Button clearButton;
+    private Button printButton;
+    private Button enhanceButton;
+    private Button securityScanButton;
+    private Button penetrationTestButton;
+    private Button securityReportButton;
     
     @Override
     public void start(Stage primaryStage) {
@@ -82,10 +101,11 @@ public class BrailleApp extends Application {
         
         // Bottom section - Action buttons
         HBox bottomSection = createBottomSection();
+        HBox statusBar = createStatusBar();
         
         root.setTop(topSection);
         root.setCenter(centerSection);
-        root.setBottom(bottomSection);
+        root.setBottom(new VBox(10, bottomSection, statusBar));
         
         Scene scene = new Scene(root);
         primaryStage.setScene(scene);
@@ -145,7 +165,7 @@ public class BrailleApp extends Application {
         // Disable image upload if OCR is not available
         if (!ocrService.isInitialized()) {
             uploadImageButton.setDisable(true);
-            uploadImageButton.setTooltip(new Tooltip("OCR not available - Tesseract not installed"));
+            uploadImageButton.setTooltip(new Tooltip("OCR not available - install Python 3 and pip install easyocr"));
         }
         
         uploadImageButton.setOnAction(e -> uploadImage());
@@ -154,7 +174,17 @@ public class BrailleApp extends Application {
         
         fileButtons.getChildren().addAll(uploadImageButton, uploadPdfButton, uploadDocxButton);
         
-        inputSection.getChildren().addAll(inputLabel, inputTextArea, fileButtons);
+        Label ocrHint = new Label(
+            ocrService.isInitialized()
+                ? "OCR is ready."
+                : "OCR is disabled: install Python 3 and run `pip install easyocr` (see requirements-ocr.txt)."
+        );
+        ocrHint.setWrapText(true);
+        ocrHint.setStyle(
+            "-fx-text-fill: " + (ocrService.isInitialized() ? "#2e7d32" : "#b71c1c") + "; -fx-font-size: 11;"
+        );
+        
+        inputSection.getChildren().addAll(inputLabel, inputTextArea, fileButtons, ocrHint);
         
         // Output section
         VBox outputSection = new VBox(10);
@@ -172,46 +202,159 @@ public class BrailleApp extends Application {
         
         outputSection.getChildren().addAll(outputLabel, brailleOutputArea);
         
+        HBox outputActions = new HBox(10);
+        outputActions.setAlignment(Pos.CENTER_LEFT);
+        
+        Button copyButton = new Button("Copy");
+        copyButton.setOnAction(e -> copyBrailleOutput());
+        copyButton.setStyle("-fx-background-color: #ecf0f1; -fx-text-fill: #2c3e50; -fx-font-size: 12; -fx-padding: 6 12;");
+        
+        Button saveButton = new Button("Save .txt");
+        saveButton.setOnAction(e -> saveBrailleOutput());
+        saveButton.setStyle("-fx-background-color: #ecf0f1; -fx-text-fill: #2c3e50; -fx-font-size: 12; -fx-padding: 6 12;");
+        
+        printButton = new Button("Print Braille");
+        printButton.setOnAction(e -> printBraille());
+        printButton.setStyle("-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 12; -fx-padding: 6 12;");
+        
+        outputActions.getChildren().addAll(copyButton, saveButton, printButton);
+        outputSection.getChildren().add(outputActions);
+        
         centerSection.getChildren().addAll(inputSection, outputSection);
         return centerSection;
     }
     
     private HBox createBottomSection() {
         HBox bottomSection = new HBox(20);
-        bottomSection.setAlignment(Pos.CENTER);
+        // Align groups by their top edge (Security is taller: 2 rows).
+        bottomSection.setAlignment(Pos.TOP_CENTER);
         bottomSection.setPadding(new Insets(20));
-        
-        Button convertButton = new Button("Convert to Braille");
-        convertButton.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 14; -fx-padding: 10 20;");
+
+        VBox conversionGroup = new VBox(8);
+        conversionGroup.setAlignment(Pos.TOP_CENTER);
+        Label conversionLabel = new Label("Conversion");
+        conversionLabel.setStyle("-fx-font-weight: bold;");
+
+        convertButton = new Button("Convert to Braille");
+        convertButton.setStyle("-fx-background-color: #3498db; -fx-text-fill: white; -fx-font-size: 13; -fx-padding: 8 14;");
         convertButton.setOnAction(e -> convertToBraille());
-        
-        Button clearButton = new Button("Clear All");
-        clearButton.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-size: 14; -fx-padding: 10 20;");
+
+        clearButton = new Button("Clear All");
+        clearButton.setStyle("-fx-background-color: #e74c3c; -fx-text-fill: white; -fx-font-size: 13; -fx-padding: 8 14;");
         clearButton.setOnAction(e -> clearAll());
-        
-        Button printButton = new Button("Print Braille");
-        printButton.setStyle("-fx-background-color: #27ae60; -fx-text-fill: white; -fx-font-size: 14; -fx-padding: 10 20;");
-        printButton.setOnAction(e -> printBraille());
-        
-        Button enhanceButton = new Button("Enhance with AI");
-        enhanceButton.setStyle("-fx-background-color: #9b59b6; -fx-text-fill: white; -fx-font-size: 14; -fx-padding: 10 20;");
+
+        HBox conversionButtons = new HBox(10, convertButton, clearButton);
+        conversionButtons.setAlignment(Pos.CENTER);
+        conversionGroup.getChildren().addAll(conversionLabel, conversionButtons);
+
+        VBox aiGroup = new VBox(8);
+        aiGroup.setAlignment(Pos.TOP_CENTER);
+        Label aiLabel = new Label("AI");
+        aiLabel.setStyle("-fx-font-weight: bold;");
+
+        enhanceButton = new Button("Enhance with AI");
+        enhanceButton.setStyle("-fx-background-color: #9b59b6; -fx-text-fill: white; -fx-font-size: 13; -fx-padding: 8 14;");
         enhanceButton.setOnAction(e -> enhanceWithAI());
-        
-        Button securityScanButton = new Button("Security Scan");
-        securityScanButton.setStyle("-fx-background-color: #f39c12; -fx-text-fill: white; -fx-font-size: 14; -fx-padding: 10 20;");
+
+        aiGroup.getChildren().addAll(aiLabel, enhanceButton);
+
+        VBox securityGroup = new VBox(8);
+        securityGroup.setAlignment(Pos.TOP_CENTER);
+        Label securityLabel = new Label("Security");
+        securityLabel.setStyle("-fx-font-weight: bold;");
+
+        securityScanButton = new Button("Security Scan");
+        securityScanButton.setStyle("-fx-background-color: #f39c12; -fx-text-fill: white; -fx-font-size: 13; -fx-padding: 8 14;");
         securityScanButton.setOnAction(e -> performSecurityScan());
-        
-        Button penetrationTestButton = new Button("Penetration Test");
-        penetrationTestButton.setStyle("-fx-background-color: #e67e22; -fx-text-fill: white; -fx-font-size: 14; -fx-padding: 10 20;");
+
+        penetrationTestButton = new Button("Penetration Test");
+        penetrationTestButton.setStyle("-fx-background-color: #e67e22; -fx-text-fill: white; -fx-font-size: 13; -fx-padding: 8 14;");
         penetrationTestButton.setOnAction(e -> performPenetrationTest());
-        
-        Button securityReportButton = new Button("Security Report");
-        securityReportButton.setStyle("-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 14; -fx-padding: 10 20;");
+
+        securityReportButton = new Button("Security Report");
+        // Slightly smaller so all 3 buttons fit in a single row.
+        securityReportButton.setStyle("-fx-background-color: #34495e; -fx-text-fill: white; -fx-font-size: 12; -fx-padding: 7 12;");
         securityReportButton.setOnAction(e -> showSecurityReport());
-        
-        bottomSection.getChildren().addAll(convertButton, clearButton, printButton, enhanceButton, 
-                                         securityScanButton, penetrationTestButton, securityReportButton);
+
+        HBox securityButtonsRow = new HBox(10, securityScanButton, penetrationTestButton, securityReportButton);
+        securityButtonsRow.setAlignment(Pos.CENTER);
+
+        securityGroup.getChildren().addAll(securityLabel, securityButtonsRow);
+
+        bottomSection.getChildren().addAll(conversionGroup, aiGroup, securityGroup);
         return bottomSection;
+    }
+
+    private HBox createStatusBar() {
+        HBox statusBar = new HBox(10);
+        statusBar.setAlignment(Pos.CENTER_LEFT);
+        statusBar.setPadding(new Insets(0, 10, 10, 10));
+
+        statusLabel = new Label("Ready.");
+        statusLabel.setStyle("-fx-font-size: 12;");
+
+        progressBar = new ProgressBar();
+        progressBar.setPrefWidth(180);
+        progressBar.setVisible(false);
+        progressBar.setProgress(-1);
+
+        statusBar.getChildren().addAll(statusLabel, progressBar);
+        return statusBar;
+    }
+
+    private void setStatus(String message) {
+        if (statusLabel != null) statusLabel.setText(message);
+    }
+
+    private void disableActionButtons(boolean disabled) {
+        if (convertButton != null) convertButton.setDisable(disabled);
+        if (clearButton != null) clearButton.setDisable(disabled);
+        if (printButton != null) printButton.setDisable(disabled);
+        if (enhanceButton != null) enhanceButton.setDisable(disabled);
+        if (securityScanButton != null) securityScanButton.setDisable(disabled);
+        if (penetrationTestButton != null) penetrationTestButton.setDisable(disabled);
+        if (securityReportButton != null) securityReportButton.setDisable(disabled);
+    }
+
+    private <T> void runAsync(String busyMessage, Callable<T> work, Consumer<T> onSuccess, String errorTitle) {
+        Task<T> task = new Task<>() {
+            @Override
+            protected T call() throws Exception {
+                return work.call();
+            }
+        };
+
+        task.setOnRunning(e -> {
+            setStatus(busyMessage != null && !busyMessage.isBlank() ? busyMessage : "Working...");
+            if (progressBar != null) {
+                progressBar.setVisible(true);
+                progressBar.setProgress(-1);
+            }
+            disableActionButtons(true);
+        });
+        task.setOnSucceeded(e -> {
+            try {
+                onSuccess.accept(task.getValue());
+            } finally {
+                if (progressBar != null) progressBar.setVisible(false);
+                disableActionButtons(false);
+                setStatus("Ready.");
+            }
+        });
+        task.setOnFailed(e -> {
+            try {
+                Throwable ex = task.getException();
+                showError(errorTitle, ex != null && ex.getMessage() != null ? ex.getMessage() : "Unknown error");
+            } finally {
+                if (progressBar != null) progressBar.setVisible(false);
+                disableActionButtons(false);
+                setStatus("Ready.");
+            }
+        });
+
+        Thread t = new Thread(task, "braille-worker");
+        t.setDaemon(true);
+        t.start();
     }
     
     private void saveOpenAIKey() {
@@ -252,7 +395,10 @@ public class BrailleApp extends Application {
                 inputTextArea.setText(extractedText);
 
                 // Check if OCR returned an error message
-                if (extractedText.contains("OCR not available") || extractedText.contains("OCR failed")) {
+                if (extractedText.contains("OCR not available")
+                        || extractedText.contains("OCR failed")
+                        || extractedText.contains("OCR timed out")
+                        || extractedText.contains("Error processing image")) {
                     showError("OCR Not Available", extractedText);
                 } else {
                     showInfo("Success", "Text extracted from image successfully!");
@@ -313,7 +459,7 @@ public class BrailleApp extends Application {
         try {
             String brailleText = brailleConverter.convertToBraille(inputText);
             brailleOutputArea.setText(brailleText);
-            showInfo("Success", "Text converted to Braille successfully!");
+            setStatus("Converted to Braille.");
         } catch (Exception e) {
             showError("Conversion Error", "Failed to convert text to Braille: " + e.getMessage());
         }
@@ -330,14 +476,16 @@ public class BrailleApp extends Application {
             showError("Error", "Please set your OpenAI API key first.");
             return;
         }
-        
-        try {
-            String enhancedText = openaiService.enhanceText(inputText);
-            inputTextArea.setText(enhancedText);
-            showInfo("Success", "Text enhanced with AI successfully!");
-        } catch (Exception e) {
-            showError("AI Enhancement Error", "Failed to enhance text: " + e.getMessage());
-        }
+
+        runAsync(
+            "Enhancing with AI...",
+            () -> openaiService.enhanceText(inputText),
+            enhancedText -> {
+                inputTextArea.setText(enhancedText);
+                setStatus("AI enhancement complete.");
+            },
+            "AI Enhancement Error"
+        );
     }
     
     private void printBraille() {
@@ -354,10 +502,50 @@ public class BrailleApp extends Application {
             showError("Printing Error", "Failed to print Braille: " + e.getMessage());
         }
     }
+
+    private void copyBrailleOutput() {
+        if (brailleOutputArea == null) return;
+        String text = brailleOutputArea.getText();
+        if (text == null || text.trim().isEmpty()) {
+            setStatus("Nothing to copy yet. Convert first.");
+            return;
+        }
+
+        ClipboardContent content = new ClipboardContent();
+        content.putString(text);
+        Clipboard.getSystemClipboard().setContent(content);
+        setStatus("Copied braille output to clipboard.");
+    }
+
+    private void saveBrailleOutput() {
+        if (brailleOutputArea == null) return;
+        String text = brailleOutputArea.getText();
+        if (text == null || text.trim().isEmpty()) {
+            setStatus("Nothing to save yet. Convert first.");
+            return;
+        }
+
+        FileChooser fileChooser = new FileChooser();
+        fileChooser.setTitle("Save Braille Output");
+        fileChooser.setInitialFileName("braille-output.txt");
+        fileChooser.getExtensionFilters().add(new FileChooser.ExtensionFilter("Text Files", "*.txt"));
+
+        File selectedFile = fileChooser.showSaveDialog(null);
+        if (selectedFile == null) return;
+
+        try {
+            Path out = selectedFile.toPath();
+            Files.write(out, text.getBytes(StandardCharsets.UTF_8));
+            setStatus("Saved braille output: " + selectedFile.getName());
+        } catch (Exception e) {
+            showError("Save Error", "Failed to save braille output: " + e.getMessage());
+        }
+    }
     
     private void clearAll() {
         inputTextArea.clear();
         brailleOutputArea.clear();
+        setStatus("Cleared.");
     }
     
     private void showError(String title, String message) {
@@ -369,11 +557,11 @@ public class BrailleApp extends Application {
     }
     
     private void showInfo(String title, String message) {
-        Alert alert = new Alert(AlertType.INFORMATION);
-        alert.setTitle(title);
-        alert.setHeaderText(null);
-        alert.setContentText(message);
-        alert.showAndWait();
+        String t = (title != null) ? title.trim() : "";
+        String m = (message != null) ? message.trim() : "";
+        if (!t.isEmpty() && !m.isEmpty()) setStatus(t + ": " + m);
+        else if (!m.isEmpty()) setStatus(m);
+        else setStatus("Done.");
     }
     
     private void showSecurityAlert(String title, SecurityScanResult scanResult) {
@@ -406,24 +594,29 @@ public class BrailleApp extends Application {
             showError("Error", "Please enter some text to scan for security threats.");
             return;
         }
-        
+
         try {
-            // Log security scan event
-            securityLogger.logSecurityEvent(new SecurityEvent("SECURITY_SCAN", 
-                "Manual security scan initiated", "INFO"));
-            
-            // Perform penetration test on input text
-            PenetrationTestResult result = penetrationTester.performPenetrationTest(inputText, PenetrationTestType.COMPREHENSIVE);
-            securityLogger.logVulnerabilityScan(result);
-            
-            // Show results
-            showPenetrationTestResults(result);
-            
-        } catch (Exception e) {
-            securityLogger.logSecurityEvent(new SecurityEvent("SECURITY_SCAN_ERROR", 
-                "Security scan failed: " + e.getMessage(), "ERROR"));
-            showError("Security Scan Error", "Failed to perform security scan: " + e.getMessage());
+            // Logging only (should be quick)
+            securityLogger.logSecurityEvent(new SecurityEvent(
+                "SECURITY_SCAN", "Manual security scan initiated", "INFO"
+            ));
+        } catch (Exception ignored) {
+            // Non-fatal
         }
+
+        runAsync(
+            "Running security scan...",
+            () -> penetrationTester.performPenetrationTest(inputText, PenetrationTestType.COMPREHENSIVE),
+            result -> {
+                try {
+                    securityLogger.logVulnerabilityScan(result);
+                } catch (Exception ignored) {
+                    // Non-fatal
+                }
+                showPenetrationTestResults(result);
+            },
+            "Security Scan Error"
+        );
     }
     
     private void performPenetrationTest() {
@@ -432,24 +625,29 @@ public class BrailleApp extends Application {
             showError("Error", "Please enter some text to perform penetration testing.");
             return;
         }
-        
+
         try {
-            // Log penetration test event
-            securityLogger.logSecurityEvent(new SecurityEvent("PENETRATION_TEST", 
-                "Penetration test initiated", "INFO"));
-            
-            // Perform comprehensive penetration test
-            PenetrationTestResult result = penetrationTester.performPenetrationTest(inputText, PenetrationTestType.COMPREHENSIVE);
-            securityLogger.logVulnerabilityScan(result);
-            
-            // Show detailed results
-            showPenetrationTestResults(result);
-            
-        } catch (Exception e) {
-            securityLogger.logSecurityEvent(new SecurityEvent("PENETRATION_TEST_ERROR", 
-                "Penetration test failed: " + e.getMessage(), "ERROR"));
-            showError("Penetration Test Error", "Failed to perform penetration test: " + e.getMessage());
+            // Logging only (should be quick)
+            securityLogger.logSecurityEvent(new SecurityEvent(
+                "PENETRATION_TEST", "Penetration test initiated", "INFO"
+            ));
+        } catch (Exception ignored) {
+            // Non-fatal
         }
+
+        runAsync(
+            "Running penetration test...",
+            () -> penetrationTester.performPenetrationTest(inputText, PenetrationTestType.COMPREHENSIVE),
+            result -> {
+                try {
+                    securityLogger.logVulnerabilityScan(result);
+                } catch (Exception ignored) {
+                    // Non-fatal
+                }
+                showPenetrationTestResults(result);
+            },
+            "Penetration Test Error"
+        );
     }
     
     private void showPenetrationTestResults(PenetrationTestResult result) {

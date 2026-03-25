@@ -1,0 +1,3 @@
+# Python deps for image OCR (EasyOCR). Install with:
+#   pip install -r requirements-ocr.txt
+easyocr>=1.7.0

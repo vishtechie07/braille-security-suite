@@ -62,6 +62,9 @@ security_logs/
 tessdata/*.traineddata
 !tessdata/README.md
 
+# Local OCR smoke-test output (optional)
+test_easyocr.png
+
 # Application specific
 application.properties.local
 *.tmp

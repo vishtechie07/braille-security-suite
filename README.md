@@ -6,7 +6,7 @@ A comprehensive Java application that converts text, images, and documents to Br
 
 ### Core Functionality
 - **Text-to-Braille Conversion**: Convert plain text to Braille script
-- **OCR Support**: Extract text from images using Tesseract OCR
+- **OCR Support**: Extract text from images using EasyOCR (Python)
 - **Document Parsing**: Parse PDF and DOCX files to extract text
 - **AI Enhancement**: Integrate with OpenAI API for text optimization
 - **Braille Printing**: Print Braille output to physical printers
@@ -24,7 +24,7 @@ A comprehensive Java application that converts text, images, and documents to Br
 - **Java 17**: Core application framework
 - **JavaFX**: Modern desktop UI
 - **Maven**: Dependency management and build automation
-- **Tesseract OCR**: Optical character recognition
+- **EasyOCR** (Python): Optical character recognition for images
 - **Apache POI**: Microsoft Office document processing
 - **PDFBox**: PDF document parsing
 - **OpenAI API**: AI-powered text enhancement
@@ -35,7 +35,7 @@ A comprehensive Java application that converts text, images, and documents to Br
 
 - Java 17 or higher
 - Maven 3.6 or higher
-- Tesseract OCR (for image text extraction)
+- Python 3 with EasyOCR (`pip install -r requirements-ocr.txt`) for image text extraction
 - OpenAI API key (for AI enhancement)
 
 ## 🔧 Installation
@@ -46,21 +46,15 @@ A comprehensive Java application that converts text, images, and documents to Br
    cd braille-security-suite
    ```
 
-2. **Install Tesseract OCR**
-   - **Windows**: Download from [UB-Mannheim Tesseract](https://github.com/UB-Mannheim/tesseract/wiki)
-   - **macOS**: `brew install tesseract`
-   - **Linux**: `sudo apt-get install tesseract-ocr`
-
-3. **Download Tesseract Language Data**
+2. **Install EasyOCR (Python)**
+   - Install [Python 3](https://www.python.org/downloads/) and ensure `python` or `py` is on your `PATH`.
+   - From the project root:
    ```bash
-   # Create tessdata directory
-   mkdir tessdata
-   
-   # Download English language data
-   curl -L https://github.com/tesseract-ocr/tessdata/raw/main/eng.traineddata -o tessdata/eng.traineddata
+   pip install -r requirements-ocr.txt
    ```
+   - The first time you run OCR, EasyOCR may download model files (can take several minutes).
 
-4. **Build the project**
+3. **Build the project**
    ```bash
    mvn clean compile
    ```
@@ -138,8 +132,10 @@ src/
 │   │           ├── SecurityAuditLogger.java # Audit logging
 │   │           └── ...                      # Other security classes
 │   └── resources/
-│       └── application.properties           # Application configuration
-├── tessdata/                                # Tesseract language data
+│       ├── application.properties           # Application configuration
+│       └── ocr/
+│           └── easyocr_ocr.py               # EasyOCR helper (invoked by Java)
+├── requirements-ocr.txt                   # Python deps for OCR
 ├── .gitignore                              # Git ignore rules
 └── README.md
 ```
@@ -151,15 +147,15 @@ src/
 2. Enter the key in the application's API key field
 3. Click "Save Key" to store it
 
-### Tesseract Configuration
-- Ensure `tessdata/eng.traineddata` is present
-- The application will automatically detect the tessdata directory
+### EasyOCR (Python)
+- Install dependencies: `pip install -r requirements-ocr.txt`
+- Ensure `python`, `python3`, or the Windows `py` launcher is on your `PATH`
 
 ## 🐛 Troubleshooting
 
 ### OCR Issues
 - **Problem**: "OCR not available" error
-- **Solution**: Install Tesseract OCR and download `eng.traineddata`
+- **Solution**: Install Python 3, run `pip install easyocr`, and restart the app. The first OCR run may download models and take several minutes.
 
 ### Security Scanning
 - **Problem**: Security scan fails
@@ -190,7 +186,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 🙏 Acknowledgments
 
-- [Tesseract OCR](https://github.com/tesseract-ocr/tesseract) for OCR capabilities
+- [EasyOCR](https://github.com/JaidedAI/EasyOCR) for OCR capabilities
 - [Apache POI](https://poi.apache.org/) for Office document processing
 - [PDFBox](https://pdfbox.apache.org/) for PDF processing
 - [OpenAI](https://openai.com/) for AI text enhancement
