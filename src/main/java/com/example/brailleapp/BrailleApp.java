@@ -129,7 +129,9 @@ public class BrailleApp extends Application {
         openaiKeyField = new PasswordField();
         openaiKeyField.setPromptText("Enter your OpenAI API key");
         openaiKeyField.setPrefWidth(300);
-        openaiKeyField.setTooltip(new Tooltip("Key is masked while typing and after save"));
+        // Never echo plaintext; keep value only in memory after Save
+        openaiKeyField.setStyle("-fx-echo-char: '\u25CF';");
+        openaiKeyField.setTooltip(new Tooltip("Key is masked while typing and cleared from the field after save"));
         
         Button saveKeyButton = new Button("Save Key");
         saveKeyButton.setOnAction(e -> saveOpenAIKey());
@@ -362,7 +364,9 @@ public class BrailleApp extends Application {
         String apiKey = openaiKeyField.getText().trim();
         if (!apiKey.isEmpty()) {
             openaiService.setApiKey(apiKey);
+            // Clear field so the secret never remains visible (or screenshot-able) in the UI
             openaiKeyField.clear();
+            openaiKeyField.setText("");
             openaiKeyField.setPromptText("API key saved (hidden)");
             setStatus("OpenAI API key saved.");
             showInfo("Success", "OpenAI API key saved successfully!");

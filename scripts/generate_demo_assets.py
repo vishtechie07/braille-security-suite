@@ -1,10 +1,11 @@
 #!/usr/bin/env python3
-"""Generate recruiter-facing demo screenshots + animated GIF from real examples."""
+"""Generate recruiter-facing demo screenshots + GIF. Never render secrets."""
 
 from __future__ import annotations
 
 import ctypes
 import sys
+import time
 from pathlib import Path
 
 from PIL import Image, ImageDraw, ImageFont, ImageOps
@@ -29,22 +30,16 @@ CAPITAL = "⠠"
 
 SAMPLES = [
     (
-        "01-text-to-braille",
+        "text-to-braille",
         "Text → Braille",
         "Welcome to Braille Security Suite.",
         "Paste plain text, convert, and copy or save Grade-1 style Braille output.",
     ),
     (
-        "02-accessibility-phrase",
+        "accessibility-phrase",
         "Accessibility phrase",
         "Access to information matters for everyone.",
         "Example conversion used in the portfolio demo walkthrough.",
-    ),
-    (
-        "03-ocr-pipeline",
-        "OCR → Braille (EasyOCR)",
-        "Hello EasyOCR",
-        "Image text is extracted via Python EasyOCR, then converted to Braille in Java.",
     ),
 ]
 
@@ -64,67 +59,102 @@ def to_braille(text: str) -> str:
     return "".join(out)
 
 
-def font(size: int, bold: bool = False) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
+def font(size: int, bold: bool = False):
     candidates = [
-        "C:/Windows/Fonts/segoeui.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-        "C:/Windows/Fonts/calibri.ttf",
+        "C:/Windows/Fonts/segoeuib.ttf" if bold else "C:/Windows/Fonts/segoeui.ttf",
+        "C:/Windows/Fonts/arialbd.ttf" if bold else "C:/Windows/Fonts/arial.ttf",
     ]
-    bold_candidates = [
-        "C:/Windows/Fonts/segoeuib.ttf",
-        "C:/Windows/Fonts/arialbd.ttf",
-    ]
-    paths = bold_candidates if bold else candidates
-    for path in paths:
+    for path in candidates:
         if Path(path).exists():
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
 
-def braille_font(size: int) -> ImageFont.FreeTypeFont | ImageFont.ImageFont:
-    for path in (
-        "C:/Windows/Fonts/seguisym.ttf",
-        "C:/Windows/Fonts/seguili.ttf",
-        "C:/Windows/Fonts/arial.ttf",
-    ):
+def braille_font(size: int):
+    for path in ("C:/Windows/Fonts/seguisym.ttf", "C:/Windows/Fonts/arial.ttf"):
         if Path(path).exists():
             return ImageFont.truetype(path, size)
     return ImageFont.load_default()
 
 
-def rounded_rect(draw: ImageDraw.ImageDraw, xy, radius: int, fill, outline=None, width=1):
+def rounded_rect(draw, xy, radius, fill, outline=None, width=1):
     draw.rounded_rectangle(xy, radius=radius, fill=fill, outline=outline, width=width)
 
 
-def draw_app_chrome(draw: ImageDraw.ImageDraw, w: int, h: int, title: str):
-    # Window chrome
-    draw.rectangle((0, 0, w, h), fill="#ecf0f1")
-    draw.rectangle((0, 0, w, 36), fill="#2c3e50")
-    draw.text((14, 8), "Braille Script Printing App", fill="white", font=font(14, True))
-    draw.text((w - 70, 8), "— □ ×", fill="#bdc3c7", font=font(14))
-    # App title
-    draw.text((40, 56), "Braille Script Printing App", fill="#2c3e50", font=font(26, True))
-    draw.text((40, 96), title, fill="#7f8c8d", font=font(14))
+def redact_secrets_band(img: Image.Image) -> Image.Image:
+    """Obliterate any API-key UI band so secrets cannot appear in portfolio media."""
+    draw = ImageDraw.Draw(img)
+    w, h = img.size
+    # Cover title-adjacent key row on live JavaFX captures (field sits under the title)
+    y0, y1 = int(h * 0.05), int(h * 0.22)
+    draw.rectangle((0, y0, w, y1), fill="#eef2f5")
+    draw.text((int(w * 0.03), y0 + 12), "Braille Script Printing App", fill="#2c3e50", font=font(22, True))
+    draw.text(
+        (int(w * 0.03), y0 + 48),
+        "OpenAI API key: PasswordField only — never displayed in demo screenshots or GIF frames",
+        fill="#566573",
+        font=font(14),
+    )
+    return img
+
+
+def assert_no_key_bytes(path: Path) -> None:
+    data = path.read_bytes()
+    # Real OpenAI keys look like sk-... with long alphanumerics; reject those patterns.
+    import re
+
+    if re.search(rb"sk-[A-Za-z0-9]{20,}", data):
+        raise SystemExit(f"Refusing to keep possible API key bytes in {path}")
+
+
+def make_overview() -> Path:
+    w, h = 1280, 720
+    img = Image.new("RGB", (w, h), "#f7f9fb")
+    draw = ImageDraw.Draw(img)
+    draw.rectangle((0, 0, w, 110), fill="#2c3e50")
+    draw.text((48, 28), "Braille Security Suite", fill="white", font=font(32, True))
+    draw.text(
+        (48, 72),
+        "Accessibility desktop demo · Java 17 · JavaFX · EasyOCR · OpenAI (key never shown)",
+        fill="#bdc3c7",
+        font=font(15),
+    )
+    cards = [
+        ("Text → Braille", "Convert typed or pasted text to Braille and copy, save, or print."),
+        ("Images & Docs", "OCR images with EasyOCR; parse PDF/DOCX into text first."),
+        ("AI assist", "Optional OpenAI enhancement — API key stays masked in the UI."),
+        ("Security checks", "Input scanning, audit logging, and reports for safer uploads."),
+    ]
+    for i, (title, body) in enumerate(cards):
+        x = 48 + (i % 2) * 600
+        y = 150 + (i // 2) * 220
+        rounded_rect(draw, (x, y, x + 560, y + 180), 12, "#ffffff", "#d0d7de", 1)
+        draw.text((x + 28, y + 28), title, fill="#2c3e50", font=font(22, True))
+        draw.multiline_text((x + 28, y + 78), body, fill="#566573", font=font(16), spacing=4)
+    path = SHOTS / "overview.png"
+    img.save(path, optimize=True)
+    assert_no_key_bytes(path)
+    return path
 
 
 def make_conversion_shot(slug: str, title: str, input_text: str, caption: str) -> Path:
     w, h = 1280, 720
     img = Image.new("RGB", (w, h), "#f4f6f7")
     draw = ImageDraw.Draw(img)
-    # Title bar
     draw.rectangle((0, 0, w, 36), fill="#2c3e50")
     draw.text((14, 8), "Braille Script Printing App", fill="white", font=font(14, True))
     draw.text((40, 52), "Braille Script Printing App", fill="#2c3e50", font=font(26, True))
-    # Masked API key row (matches PasswordField UX)
-    draw.text((40, 100), "OpenAI API Key:", fill="#2c3e50", font=font(14))
-    rounded_rect(draw, (180, 94, 520, 126), 4, "#ffffff", "#bdc3c7", 1)
-    draw.text((190, 100), "••••••••••••••••", fill="#7f8c8d", font=font(14))
-    rounded_rect(draw, (535, 94, 620, 126), 4, "#ecf0f1", "#bdc3c7", 1)
-    draw.text((548, 100), "Save Key", fill="#2c3e50", font=font(12))
+
+    # No real key UI — static safe banner only
+    draw.rectangle((40, 94, 1240, 130), fill="#e8eef2")
+    draw.text(
+        (52, 102),
+        "OpenAI API key: PasswordField (masked) — omitted from demo screenshots",
+        fill="#566573",
+        font=font(14),
+    )
 
     braille = to_braille(input_text)
-
-    # Input / output panels (live UI layout)
     draw.text((40, 150), "Input Text:", fill="#2c3e50", font=font(15, True))
     rounded_rect(draw, (40, 178, 620, 430), 6, "#ffffff", "#bdc3c7", 1)
     draw.multiline_text((58, 198), input_text, fill="#2c3e50", font=font(18), spacing=6)
@@ -133,7 +163,6 @@ def make_conversion_shot(slug: str, title: str, input_text: str, caption: str) -
     rounded_rect(draw, (660, 178, 1240, 430), 6, "#ffffff", "#bdc3c7", 1)
     draw.multiline_text((678, 198), braille, fill="#1a1a1a", font=braille_font(26), spacing=8)
 
-    # Upload + OCR
     for i, label in enumerate(("Upload Image", "Upload PDF", "Upload DOCX")):
         x0 = 40 + i * 140
         rounded_rect(draw, (x0, 450, x0 + 125, 484), 4, "#ecf0f1", "#bdc3c7", 1)
@@ -147,13 +176,8 @@ def make_conversion_shot(slug: str, title: str, input_text: str, caption: str) -
     rounded_rect(draw, (875, 450, 1010, 484), 4, "#27ae60")
     draw.text((890, 458), "Print Braille", fill="white", font=font(12, True))
 
-    # Action groups
     for i, (label, color) in enumerate(
-        [
-            ("Convert to Braille", "#3498db"),
-            ("Enhance with AI", "#9b59b6"),
-            ("Security Scan", "#f39c12"),
-        ]
+        (("Convert to Braille", "#3498db"), ("Enhance with AI", "#9b59b6"), ("Security Scan", "#f39c12"))
     ):
         x0 = 40 + i * 280
         rounded_rect(draw, (x0, 540, x0 + 250, 588), 8, color)
@@ -165,6 +189,7 @@ def make_conversion_shot(slug: str, title: str, input_text: str, caption: str) -
 
     path = SHOTS / f"{slug}.png"
     img.save(path, optimize=True)
+    assert_no_key_bytes(path)
     (EXAMPLES / f"{slug}.txt").write_text(
         f"INPUT:\n{input_text}\n\nBRAILLE:\n{braille}\n", encoding="utf-8"
     )
@@ -175,82 +200,65 @@ def make_ocr_shot() -> Path:
     w, h = 1280, 720
     img = Image.new("RGB", (w, h), "#ecf0f1")
     draw = ImageDraw.Draw(img)
-    draw_app_chrome(
-        draw,
-        w,
-        h,
+    draw.rectangle((0, 0, w, 36), fill="#2c3e50")
+    draw.text((14, 8), "Braille Script Printing App", fill="white", font=font(14, True))
+    draw.text((40, 52), "Braille Script Printing App", fill="#2c3e50", font=font(26, True))
+    draw.text(
+        (40, 96),
         "EasyOCR extracts text from images; Java converts the result to Braille.",
+        fill="#7f8c8d",
+        font=font(14),
     )
 
     sample = ROOT / "test_easyocr.png"
     if sample.exists():
-        ocr_img = Image.open(sample).convert("RGB")
-        ocr_img = ImageOps.contain(ocr_img, (520, 220))
+        ocr_img = ImageOps.contain(Image.open(sample).convert("RGB"), (520, 220))
         panel = Image.new("RGB", (540, 240), "white")
-        px = (540 - ocr_img.width) // 2
-        py = (240 - ocr_img.height) // 2
-        panel.paste(ocr_img, (px, py))
+        panel.paste(ocr_img, ((540 - ocr_img.width) // 2, (240 - ocr_img.height) // 2))
         img.paste(panel, (50, 150))
         draw.rectangle((50, 150, 590, 390), outline="#bdc3c7", width=2)
     else:
         rounded_rect(draw, (50, 150, 590, 390), 8, "#ffffff", "#bdc3c7", 2)
-        draw.text((80, 250), "[test_easyocr.png]", fill="#7f8c8d", font=font(18))
+        draw.text((80, 250), "[OCR sample image]", fill="#7f8c8d", font=font(18))
 
     draw.text((50, 410), "Source image (OCR example)", fill="#2c3e50", font=font(14, True))
-
     extracted = "Hello EasyOCR"
     braille = to_braille(extracted)
     rounded_rect(draw, (650, 150, 1230, 300), 10, "#ffffff", "#bdc3c7", 2)
     draw.text((670, 166), "OCR extracted text", fill="#2c3e50", font=font(16, True))
     draw.text((670, 210), extracted, fill="#2c3e50", font=font(22))
-
     rounded_rect(draw, (650, 330, 1230, 520), 10, "#ffffff", "#bdc3c7", 2)
     draw.text((670, 346), "Braille output", fill="#2c3e50", font=font(16, True))
     draw.text((670, 400), braille, fill="#1a1a1a", font=braille_font(30))
-
     rounded_rect(draw, (50, 560, 1230, 660), 8, "#ffffff", "#d0d7de", 1)
-    draw.text((70, 585), "Pipeline: Image → EasyOCR (Python) → BrailleConverter (Java)", fill="#2c3e50", font=font(16, True))
-    draw.text((70, 618), "Verified locally with py -3 and the bundled easyocr_ocr.py helper.", fill="#7f8c8d", font=font(13))
-
-    path = SHOTS / "03-ocr-pipeline.png"
+    draw.text(
+        (70, 585),
+        "Pipeline: Image → EasyOCR (Python) → BrailleConverter (Java)",
+        fill="#2c3e50",
+        font=font(16, True),
+    )
+    draw.text(
+        (70, 618),
+        "No API keys appear in demo media. OpenAI key uses PasswordField in the live app.",
+        fill="#7f8c8d",
+        font=font(13),
+    )
+    path = SHOTS / "ocr-pipeline.png"
     img.save(path, optimize=True)
-    return path
-
-
-def make_overview_shot() -> Path:
-    w, h = 1280, 720
-    img = Image.new("RGB", (w, h), "#f7f9fb")
-    draw = ImageDraw.Draw(img)
-    draw.rectangle((0, 0, w, 110), fill="#2c3e50")
-    draw.text((48, 28), "Braille Security Suite", fill="white", font=font(32, True))
-    draw.text((48, 72), "Accessibility-focused desktop demo · Java 17 · JavaFX · EasyOCR · OpenAI", fill="#bdc3c7", font=font(15))
-
-    cards = [
-        ("Text → Braille", "Convert typed or pasted text to Braille and copy, save, or print."),
-        ("Images & Docs", "OCR images with EasyOCR; parse PDF/DOCX into text first."),
-        ("AI assist", "Optional OpenAI enhancement before conversion."),
-        ("Security checks", "Input scanning, audit logging, and reports for safer uploads."),
-    ]
-    for i, (title, body) in enumerate(cards):
-        x = 48 + (i % 2) * 600
-        y = 150 + (i // 2) * 220
-        rounded_rect(draw, (x, y, x + 560, y + 180), 12, "#ffffff", "#d0d7de", 1)
-        draw.text((x + 28, y + 28), title, fill="#2c3e50", font=font(22, True))
-        draw.multiline_text((x + 28, y + 78), body, fill="#566573", font=font(16), spacing=4)
-
-    path = SHOTS / "00-overview.png"
-    img.save(path, optimize=True)
+    assert_no_key_bytes(path)
     return path
 
 
 class RECT(ctypes.Structure):
-    _fields_ = [("left", ctypes.c_long), ("top", ctypes.c_long), ("right", ctypes.c_long), ("bottom", ctypes.c_long)]
+    _fields_ = [
+        ("left", ctypes.c_long),
+        ("top", ctypes.c_long),
+        ("right", ctypes.c_long),
+        ("bottom", ctypes.c_long),
+    ]
 
 
 def capture_live_window(exact_title: str = "Braille Script Printing App") -> Path | None:
-    """Capture via PrintWindow to avoid multi-monitor / DPI grab mismatches."""
-    import time
-
     user32 = ctypes.windll.user32
     gdi32 = ctypes.windll.gdi32
     found = []
@@ -280,7 +288,6 @@ def capture_live_window(exact_title: str = "Braille Script Printing App") -> Pat
     width = int(rect.right - rect.left)
     height = int(rect.bottom - rect.top)
     if width < 200 or height < 200:
-        print(f"Invalid window bounds: {width}x{height}", file=sys.stderr)
         return None
 
     hwnd_dc = user32.GetWindowDC(hwnd)
@@ -292,7 +299,6 @@ def capture_live_window(exact_title: str = "Braille Script Printing App") -> Pat
         gdi32.DeleteObject(bmp)
         gdi32.DeleteDC(mem_dc)
         user32.ReleaseDC(hwnd, hwnd_dc)
-        print("PrintWindow failed; skipping live capture.", file=sys.stderr)
         return None
 
     class BITMAPINFOHEADER(ctypes.Structure):
@@ -316,9 +322,7 @@ def capture_live_window(exact_title: str = "Braille Script Printing App") -> Pat
     bmi.biHeight = -height
     bmi.biPlanes = 1
     bmi.biBitCount = 32
-    bmi.biCompression = 0
-    buf_len = width * height * 4
-    buf = (ctypes.c_ubyte * buf_len)()
+    buf = (ctypes.c_ubyte * (width * height * 4))()
     gdi32.GetDIBits(mem_dc, bmp, 0, height, buf, ctypes.byref(bmi), 0)
     gdi32.DeleteObject(bmp)
     gdi32.DeleteDC(mem_dc)
@@ -326,15 +330,19 @@ def capture_live_window(exact_title: str = "Braille Script Printing App") -> Pat
 
     shot = Image.frombuffer("RGBA", (width, height), bytes(buf), "raw", "BGRA", 0, 1).convert("RGB")
     if shot.convert("L").getextrema()[1] < 20:
-        print("Live capture looked empty; skipping.", file=sys.stderr)
         return None
 
-    path = SHOTS / "04-live-ui.png"
+    # Ruthless: wipe any key UI pixels before the file exists on disk
+    shot = redact_secrets_band(shot)
     max_w = 1280
     if shot.width > max_w:
         ratio = max_w / shot.width
         shot = shot.resize((max_w, int(shot.height * ratio)), Image.Resampling.LANCZOS)
+        shot = redact_secrets_band(shot)
+
+    path = SHOTS / "live-ui.png"
     shot.save(path, optimize=True)
+    assert_no_key_bytes(path)
     print(f"Captured live UI -> {path} ({shot.width}x{shot.height})")
     return path
 
@@ -342,11 +350,11 @@ def capture_live_window(exact_title: str = "Braille Script Printing App") -> Pat
 def make_gif(paths: list[Path]) -> Path:
     frames = []
     for p in paths:
-        im = Image.open(p).convert("RGB")
-        im = ImageOps.contain(im, (960, 540), Image.Resampling.LANCZOS)
+        im = ImageOps.contain(Image.open(p).convert("RGB"), (960, 540), Image.Resampling.LANCZOS)
         canvas = Image.new("RGB", (960, 540), "#ecf0f1")
         canvas.paste(im, ((960 - im.width) // 2, (540 - im.height) // 2))
-        frames.append(canvas)
+        # Final safety pass on every GIF frame
+        frames.append(redact_secrets_band(canvas))
     gif_path = OUT / "demo.gif"
     frames[0].save(
         gif_path,
@@ -356,6 +364,7 @@ def make_gif(paths: list[Path]) -> Path:
         loop=0,
         optimize=False,
     )
+    assert_no_key_bytes(gif_path)
     print(f"Wrote {gif_path}")
     return gif_path
 
@@ -364,39 +373,25 @@ def main() -> int:
     SHOTS.mkdir(parents=True, exist_ok=True)
     EXAMPLES.mkdir(parents=True, exist_ok=True)
 
-    paths: list[Path] = []
-    paths.append(make_overview_shot())
-    for slug, title, text, caption in SAMPLES[:2]:
+    # Remove old filenames that may still be CDN-cached with leaked pixels
+    for stale in SHOTS.glob("*"):
+        if stale.suffix.lower() == ".png":
+            stale.unlink()
+
+    paths: list[Path] = [make_overview()]
+    for slug, title, text, caption in SAMPLES:
         paths.append(make_conversion_shot(slug, title, text, caption))
     paths.append(make_ocr_shot())
-
     live = capture_live_window()
     if live:
         paths.append(live)
 
     make_gif(paths)
-
-    # Master examples index
     (EXAMPLES / "README.md").write_text(
-        "\n".join(
-            [
-                "# Demo examples",
-                "",
-                "These inputs match the screenshots and GIF under `docs/demo/`.",
-                "",
-                "## Text samples",
-                "",
-                *[f"- `{slug}.txt` — {title}" for slug, title, _, _ in SAMPLES],
-                "",
-                "## OCR sample",
-                "",
-                "- Project root `test_easyocr.png` (ignored by git) or regenerate with Pillow.",
-                "",
-            ]
-        ),
+        "# Demo examples\n\nInputs match `docs/demo` screenshots. API keys are never included in demo media.\n",
         encoding="utf-8",
     )
-    print("Demo assets ready in docs/demo/")
+    print("Demo assets ready (API key row redacted).")
     return 0
 
 

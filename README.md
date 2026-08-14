@@ -12,18 +12,20 @@ A Java desktop application that converts **text, images, and documents to Braill
 
 | Live UI | Text → Braille |
 | --- | --- |
-| ![Live UI](docs/demo/screenshots/04-live-ui.png) | ![Text to Braille](docs/demo/screenshots/01-text-to-braille.png) |
+| ![Live UI](docs/demo/screenshots/live-ui.png) | ![Text to Braille](docs/demo/screenshots/text-to-braille.png) |
 
 | OCR pipeline | Overview |
 | --- | --- |
-| ![OCR pipeline](docs/demo/screenshots/03-ocr-pipeline.png) | ![Overview](docs/demo/screenshots/00-overview.png) |
+| ![OCR pipeline](docs/demo/screenshots/ocr-pipeline.png) | ![Overview](docs/demo/screenshots/overview.png) |
 
-**Example used in the demo** (`docs/demo/examples/01-text-to-braille.txt`):
+**Example used in the demo** (`docs/demo/examples/text-to-braille.txt`):
 
 ```
 INPUT:   Welcome to Braille Security Suite.
 BRAILLE: ⠠⠺⠑⠇⠉⠕⠍⠑ ⠞⠕ ⠠⠃⠗⠁⠊⠇⠇⠑ ⠠⠎⠑⠉⠥⠗⠊⠞⠽ ⠠⠎⠥⠊⠞⠑⠲
 ```
+
+> Demo media never includes an OpenAI API key. In the app, the key uses a **PasswordField** and is cleared from the field after **Save Key**.
 
 More examples and regeneration notes: [`docs/demo/README.md`](docs/demo/README.md).
 
