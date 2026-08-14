@@ -1,0 +1,5 @@
+INPUT:
+Welcome to Braille Security Suite.
+
+BRAILLE:
+⠠⠺⠑⠇⠉⠕⠍⠑ ⠞⠕ ⠠⠃⠗⠁⠊⠇⠇⠑ ⠠⠎⠑⠉⠥⠗⠊⠞⠽ ⠠⠎⠥⠊⠞⠑⠲

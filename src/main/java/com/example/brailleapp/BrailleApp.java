@@ -41,7 +41,7 @@ public class BrailleApp extends Application {
     
     private TextArea inputTextArea;
     private TextArea brailleOutputArea;
-    private TextField openaiKeyField;
+    private PasswordField openaiKeyField;
     private Label statusLabel;
     private ProgressBar progressBar;
     private BrailleConverter brailleConverter;
@@ -126,9 +126,10 @@ public class BrailleApp extends Application {
         apiKeyBox.setAlignment(Pos.CENTER_LEFT);
         
         Label apiKeyLabel = new Label("OpenAI API Key:");
-        openaiKeyField = new TextField();
+        openaiKeyField = new PasswordField();
         openaiKeyField.setPromptText("Enter your OpenAI API key");
         openaiKeyField.setPrefWidth(300);
+        openaiKeyField.setTooltip(new Tooltip("Key is masked while typing and after save"));
         
         Button saveKeyButton = new Button("Save Key");
         saveKeyButton.setOnAction(e -> saveOpenAIKey());
@@ -361,6 +362,9 @@ public class BrailleApp extends Application {
         String apiKey = openaiKeyField.getText().trim();
         if (!apiKey.isEmpty()) {
             openaiService.setApiKey(apiKey);
+            openaiKeyField.clear();
+            openaiKeyField.setPromptText("API key saved (hidden)");
+            setStatus("OpenAI API key saved.");
             showInfo("Success", "OpenAI API key saved successfully!");
         } else {
             showError("Error", "Please enter a valid API key.");
