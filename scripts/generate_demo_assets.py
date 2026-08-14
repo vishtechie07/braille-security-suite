@@ -109,39 +109,59 @@ def draw_app_chrome(draw: ImageDraw.ImageDraw, w: int, h: int, title: str):
 
 def make_conversion_shot(slug: str, title: str, input_text: str, caption: str) -> Path:
     w, h = 1280, 720
-    img = Image.new("RGB", (w, h), "#ecf0f1")
+    img = Image.new("RGB", (w, h), "#f4f6f7")
     draw = ImageDraw.Draw(img)
-    draw_app_chrome(draw, w, h, caption)
+    # Title bar
+    draw.rectangle((0, 0, w, 36), fill="#2c3e50")
+    draw.text((14, 8), "Braille Script Printing App", fill="white", font=font(14, True))
+    draw.text((40, 52), "Braille Script Printing App", fill="#2c3e50", font=font(26, True))
+    # Masked API key row (matches PasswordField UX)
+    draw.text((40, 100), "OpenAI API Key:", fill="#2c3e50", font=font(14))
+    rounded_rect(draw, (180, 94, 520, 126), 4, "#ffffff", "#bdc3c7", 1)
+    draw.text((190, 100), "••••••••••••••••", fill="#7f8c8d", font=font(14))
+    rounded_rect(draw, (535, 94, 620, 126), 4, "#ecf0f1", "#bdc3c7", 1)
+    draw.text((548, 100), "Save Key", fill="#2c3e50", font=font(12))
 
     braille = to_braille(input_text)
 
-    # Input panel
-    rounded_rect(draw, (40, 130, 620, 470), 10, "#ffffff", "#bdc3c7", 2)
-    draw.text((58, 146), "Input Text", fill="#2c3e50", font=font(16, True))
-    draw.multiline_text((58, 180), input_text, fill="#2c3e50", font=font(18), spacing=6)
+    # Input / output panels (live UI layout)
+    draw.text((40, 150), "Input Text:", fill="#2c3e50", font=font(15, True))
+    rounded_rect(draw, (40, 178, 620, 430), 6, "#ffffff", "#bdc3c7", 1)
+    draw.multiline_text((58, 198), input_text, fill="#2c3e50", font=font(18), spacing=6)
 
-    # Output panel
-    rounded_rect(draw, (660, 130, 1240, 470), 10, "#ffffff", "#bdc3c7", 2)
-    draw.text((678, 146), "Braille Output", fill="#2c3e50", font=font(16, True))
-    draw.multiline_text((678, 180), braille, fill="#1a1a1a", font=braille_font(28), spacing=10)
+    draw.text((660, 150), "Braille Output:", fill="#2c3e50", font=font(15, True))
+    rounded_rect(draw, (660, 178, 1240, 430), 6, "#ffffff", "#bdc3c7", 1)
+    draw.multiline_text((678, 198), braille, fill="#1a1a1a", font=braille_font(26), spacing=8)
 
-    # Action row
+    # Upload + OCR
+    for i, label in enumerate(("Upload Image", "Upload PDF", "Upload DOCX")):
+        x0 = 40 + i * 140
+        rounded_rect(draw, (x0, 450, x0 + 125, 484), 4, "#ecf0f1", "#bdc3c7", 1)
+        draw.text((x0 + 12, 458), label, fill="#2c3e50", font=font(11))
+    draw.text((40, 498), "OCR is ready.", fill="#27ae60", font=font(13))
+
+    rounded_rect(draw, (660, 450, 740, 484), 4, "#ecf0f1", "#bdc3c7", 1)
+    draw.text((680, 458), "Copy", fill="#2c3e50", font=font(12))
+    rounded_rect(draw, (755, 450, 860, 484), 4, "#ecf0f1", "#bdc3c7", 1)
+    draw.text((768, 458), "Save .txt", fill="#2c3e50", font=font(12))
+    rounded_rect(draw, (875, 450, 1010, 484), 4, "#27ae60")
+    draw.text((890, 458), "Print Braille", fill="white", font=font(12, True))
+
+    # Action groups
     for i, (label, color) in enumerate(
         [
             ("Convert to Braille", "#3498db"),
-            ("Upload Image", "#95a5a6"),
-            ("Security Scan", "#f39c12"),
             ("Enhance with AI", "#9b59b6"),
+            ("Security Scan", "#f39c12"),
         ]
     ):
-        x0 = 40 + i * 300
-        rounded_rect(draw, (x0, 500, x0 + 270, 548), 8, color)
-        draw.text((x0 + 24, 512), label, fill="white", font=font(15, True))
+        x0 = 40 + i * 280
+        rounded_rect(draw, (x0, 540, x0 + 250, 588), 8, color)
+        draw.text((x0 + 40, 552), label, fill="white", font=font(15, True))
 
-    # Status bar
-    rounded_rect(draw, (40, 580, 1240, 660), 8, "#ffffff", "#d0d7de", 1)
-    draw.text((58, 598), f"Demo example · {title}", fill="#2c3e50", font=font(16, True))
-    draw.text((58, 626), "Ready. Converted with the same Grade-1 mapping used by BrailleConverter.", fill="#7f8c8d", font=font(13))
+    rounded_rect(draw, (40, 620, 1240, 690), 8, "#ffffff", "#d0d7de", 1)
+    draw.text((58, 640), f"Demo · {title}", fill="#2c3e50", font=font(16, True))
+    draw.text((58, 666), caption, fill="#7f8c8d", font=font(13))
 
     path = SHOTS / f"{slug}.png"
     img.save(path, optimize=True)
@@ -315,22 +335,6 @@ def capture_live_window(exact_title: str = "Braille Script Printing App") -> Pat
         ratio = max_w / shot.width
         shot = shot.resize((max_w, int(shot.height * ratio)), Image.Resampling.LANCZOS)
     shot.save(path, optimize=True)
-    # Never commit a visible API key from the live UI field
-    draw = ImageDraw.Draw(shot)
-    w, h = shot.size
-    draw.rounded_rectangle(
-        (int(w * 0.14), int(h * 0.075), int(w * 0.70), int(h * 0.145)),
-        radius=4,
-        fill="#f5f5f5",
-        outline="#b0b0b0",
-    )
-    draw.text(
-        (int(w * 0.16), int(h * 0.098)),
-        "[API key redacted for public demo]",
-        fill="#555555",
-        font=font(13),
-    )
-    shot.save(path, optimize=True)
     print(f"Captured live UI -> {path} ({shot.width}x{shot.height})")
     return path
 
@@ -348,7 +352,7 @@ def make_gif(paths: list[Path]) -> Path:
         gif_path,
         save_all=True,
         append_images=frames[1:],
-        duration=2200,
+        duration=1800,
         loop=0,
         optimize=False,
     )
